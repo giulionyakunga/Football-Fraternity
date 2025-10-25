@@ -17,7 +17,8 @@ server.use(bodyParser.json());
 
 const User = require('./src/database/models/User');
 const Footballer = require('./src/database/models/Footballer');
-const Message = require('./src/database/models/Message')
+const Message = require('./src/database/models/Message');
+const Request = require('./src/database/models/Request');
 
 
 server.post('/api2/add_user', async (req, res) => {
@@ -259,7 +260,7 @@ server.post('/update_footballer', async (req, res) => {
     // }
 
     let image_url;
-    if (!file_type) {
+    if (file_type) {
         image_url = `footballer-${user_id}${Date.now()}${file_type}`;
     }
 
@@ -304,21 +305,17 @@ server.post('/update_footballer', async (req, res) => {
             console.log("Footballer not updated, Error : ", err)
         })
 
-        console.log("Done Saving Footballer")
-
         if (footballer_image) {
-            console.log("Saving Image")
             // Save image
             const imageBuffer = Buffer.from(footballer_image, 'base64');
             const uploadDir = path.join(__dirname, 'uploads/images');
             if (!fs.existsSync(uploadDir)) {
                 fs.mkdirSync(uploadDir);
             }
+
             const imagePath = path.join(uploadDir, image_url);
             fs.writeFileSync(imagePath, imageBuffer);
             console.log(`Footballer Image saved at: ${imagePath}`);
-
-            console.log("Deleting Image")
 
             const prevImagePath = path.join(__dirname, 'uploads/images', prev_image_url);
             fs.unlink(prevImagePath, (error) => {
@@ -332,8 +329,6 @@ server.post('/update_footballer', async (req, res) => {
                     console.log(prevImagePath + " file deleted successfully");
                 }
             });  
-
-            console.log("Done deletng Image")
 
             res.send("Footballer updated successfully!");
         } else {
@@ -370,6 +365,148 @@ server.get('/image/:imageName', (req, res) => {
     });
 });
 
+server.post('/submit_request', async (req, res) => {
+    console.log("Request: ", req.body);
+    
+    let random_string = '';
+    const crypto = require('crypto');
+
+    for (let i = 0; i < 5; i++) {
+        random_string += `${crypto.randomInt(0, 9)}`;
+    }
+   
+    const { name, phone_number, email, subject, case_title, opposing_party, description, service_type, consultancy_type, case_type, file_type, file_type1, file_type2, file_name, file_name1, file_name2, file, file1, file2 } = req.body;
+    let content_type;
+    let content_type1;
+    let content_type2;
+    let file_url;
+    let file_url1;
+    let file_url2;
+
+    if(file_name) {
+        const file_extension = file_name.split('.')[1];
+        file_url = `request-${random_string}-${Date.now()}.${file_extension}`;
+        content_type = `application/${file_extension}`
+    }
+
+    if(file_name1) {
+        const file_extension = file_name1.split('.')[1];
+        file_url1 = `request-${random_string}-1-${Date.now()}.${file_extension}`;
+        content_type1 = `application/${file_extension}`
+    }
+
+    if(file_name2) {
+        const file_extension = file_name2.split('.')[1];
+        file_url2 = `request-${random_string}-2-${Date.now()}.${file_extension}`;
+        content_type2 = `application/${file_extension}`
+    }
+
+    const request = await Request.create({
+            client_name: name,
+            phone_number,
+            email,
+            service_type,
+            type: consultancy_type ? consultancy_type : case_type,
+            subject: subject ? subject : `${case_title} with ${opposing_party}`,
+            description,
+            file_url,
+            file_url1,
+            file_url2,
+    })
+    .catch(async err => {
+        console.log("Request not created, Error : ", err);
+    })
+
+    if(request) {
+        if (file || file1 || file2) {
+            // Save file1
+            const uploadDir = path.join(__dirname, 'uploads/documents');
+            if (!fs.existsSync(uploadDir)) {
+                fs.mkdirSync(uploadDir);
+            }
+            
+            let filePath;
+            if(file_url && file) {
+                const fileBuffer = Buffer.from(file, 'base64');
+                filePath = path.join(uploadDir, file_url);
+                fs.writeFileSync(filePath, fileBuffer);
+            }
+
+            // Save file1
+            let filePath1;
+            if(file_url1 && file1) {
+                const fileBuffer1 = Buffer.from(file1, 'base64');
+                filePath1 = path.join(uploadDir, file_url1);
+                fs.writeFileSync(filePath1, fileBuffer1);
+            }
+
+            // Save file2
+            let filePath2;
+            if(file_url2 && file2) {            
+                const fileBuffer2 = Buffer.from(file2, 'base64');
+                filePath2 = path.join(uploadDir, file_url2);
+                fs.writeFileSync(filePath2, fileBuffer2);
+            }
+
+            res.send("Request submitted successfully!");
+
+            sendRequestEmail(name, phone_number, email, service_type, consultancy_type, subject, description, file_name, file_name1, file_name2, filePath, filePath1, filePath2, content_type, content_type1, content_type2 );
+
+        } else {
+            console.log('No file received.');
+            
+            res.send("Request submitted successfully!");
+
+            sendRequestEmail(name, phone_number, email, service_type, consultancy_type, subject, description, "", "", "" );
+        }
+    }
+});
+
+server.get('/requests/', async function (request, response) {
+    try {
+        const requests = await Request.findAll();
+        if(requests){
+            response.json(requests);
+        }
+    } catch (err) {
+        console.error("Request fetch error:", err);
+        response.status(500).json({ error: "Failed to fetch Request" });
+    }
+});
+
+server.post('/send_message', async (req, res) => {
+    console.log("Message: ", req.body);
+   
+    const { name, phone_number, email, message } = req.body;
+    
+    const text_message = await Message.create({
+        client_name: name,
+        phone_number,
+        email,
+        text: message,
+    })
+    .catch(async err => {
+        console.log("Message not created, Error : ", err);
+    })
+
+    if(text_message) {
+        res.send("Message sent successfully!");
+        sendMessageEmail(name, phone_number, email, message );
+    }
+});
+
+server.get('/messages/', async function (request, response) {
+    try {
+        const messages = await Message.findAll();
+        if(messages){
+            response.json(messages);
+        }
+    } catch (err) {
+        console.error("Message fetch error:", err);
+        response.status(500).json({ error: "Failed to fetch Message" });
+    }
+});
+
 const port = 8087;
 server.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
@@ -386,228 +523,174 @@ server.listen(port, () => {
 });
 
 
-function sendEmailMessage(fault_name, location, severity, status) {
-    const reported_at = getHumanReadableDateTime();
-    return new Promise(async (resolve, reject) => {
-        console.log("Sending Email...");
-        const nodemailer = require('nodemailer');
+async function sendRequestEmail(name, phone_number, email, service_type, request_type, subject, message, file_name, file_name1, file_name2, path, path1, path2, content_type, content_type1, content_type2 ) {
+    const nodemailer = require('nodemailer');
+    try {
+        console.log("Initiating email dispatch...");
 
-        // Fault descriptions for active faults (status == 1)
-        const faultDescriptionsActive = {
-            'LOW_PRESSURE': 'Low hydraulic pressure detected in autorecloser mechanism. This may affect operation reliability and should be addressed promptly.',
-            'HIGH_TEMPERATURE': 'Elevated temperature detected in autorecloser compartment. Excessive heat can damage components and reduce equipment lifespan.',
-            'DOOR_OPEN': 'Autorecloser enclosure door open detected. This poses safety risks and may expose equipment to environmental factors.',
-            'AC_POWER_LOSS': 'Main AC power supply failure detected. System is operating on backup power. Verify power source and restoration timeline.',
-            'BATTERY_LOW_VOLTAGE': 'Backup battery voltage below optimal level. Battery may need charging or replacement to ensure backup power availability.',
-            'BATTERY_VOLTAGE_CRITICAL': 'Critical backup battery voltage level detected. Immediate attention required to prevent loss of backup power capability.',
-            'BATTERY_ERROR': 'Battery system malfunction detected. This may affect backup power availability during outages.',
-            'OVERCURRENT_I': 'Stage I overcurrent condition detected. This indicates a potential fault in the protected circuit.',
-            'OVERCURRENT_II': 'Stage II overcurrent condition detected. The fault current has exceeded secondary protection thresholds.',
-            'OVERCURRENT_III': 'Stage III overcurrent condition detected. Immediate action required - fault current approaching equipment limits.',
-            'GROUND_E_F': 'Ground fault current detected. This indicates insulation failure or contact with earth potential.',
-            'NEUTRAL_E_F': 'Neutral-to-earth fault detected. This may indicate unbalanced loading or insulation degradation.'
-        };
+        // Create reusable transporter object using the default SMTP transport
 
-        // Fault descriptions for cleared faults (status == 0)
-        const faultDescriptionsCleared = {
-            'LOW_PRESSURE': 'Hydraulic pressure has returned to normal operating range. System functionality restored.',
-            'HIGH_TEMPERATURE': 'Temperature in autorecloser compartment has normalized. No further action required.',
-            'DOOR_OPEN': 'Autorecloser enclosure door has been secured. Safety risk mitigated.',
-            'AC_POWER_LOSS': 'Main AC power supply restored. System operating on primary power source.',
-            'BATTERY_LOW_VOLTAGE': 'Backup battery voltage has returned to normal operating range.',
-            'BATTERY_VOLTAGE_CRITICAL': 'Backup battery voltage has been restored to safe operating levels.',
-            'BATTERY_ERROR': 'Battery system malfunction has been resolved. Backup power capability restored.',
-            'OVERCURRENT_I': 'Stage I overcurrent condition has cleared. Circuit protection maintained.',
-            'OVERCURRENT_II': 'Stage II overcurrent condition has cleared. System protection restored.',
-            'OVERCURRENT_III': 'Stage III overcurrent condition has cleared. Emergency condition resolved.',
-            'GROUND_E_F': 'Ground fault condition has cleared. Insulation integrity restored.',
-            'NEUTRAL_E_F': 'Neutral-to-earth fault condition has cleared. System balance restored.'
-        };
+        // let transporter = nodemailer.createTransport({
+        //     host: 'smtp.gmail.com',
+        //     port: 587,
+        //     secure: false, // true for 465, false for other ports
+        //     auth: {
+        //         user: 'giulionyakunga@gmail.com',
+        //         pass: 'japttnvreysoxzvs'
+        //     }
+        // });
 
-        // create reusable transporter object using the default SMTP transport
+
         let transporter = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 587,
-            secure: false,
+            host: "mail.telabs.co.tz",   // replace with your Modoboa hostname or server IP
+            port: 587,                   // 587 (STARTTLS) or 465 (SSL/TLS)
+            secure: false,               // false = STARTTLS, true = SSL/TLS
             auth: {
-                user: 'giulionyakunga@gmail.com',
-                pass: 'japttnvreysoxzvs'
+                user: "no-reply@telabs.co.tz",   // use a real mailbox created in Modoboa
+                pass: "NoReply123!"      // mailbox password
+            },
+            tls: {
+                rejectUnauthorized: false   // allow self-signed certs if using one
             }
         });
 
-        // Determine color and status text based on severity and status
-        let severityColor;
-        let statusText;
-        let statusColor;
-        let description;
+        // Professional email content
+        let htmlContent =  "<html>" +
+                            "<head>" +
+                            "<meta charset=\"UTF-8\">" +
+                            "</head>" +
+                            "<body>" +
+                            "<br>" +
+                            "<p style=color:blue;>Please find your Client request below </p>" +
+                            "<hr>" +
+                            "<p style=color:black;>Name : " + name + "</p>" +
+                            "<p style=color:black;>phone_number : " + phone_number + "</p>" +
+                            "<p style=color:black;>Email : " + email + "</p>" +
+                            "<p style=color:black;>Service Type : " + service_type + "</p>" +
+                            "<p style=color:black;>Request Type : " + request_type + "</p>" +
+                            "<p style=color:black;>Subject : " + subject + "</p>" +
+                            "<p style=color:black;>Message : " + message + "</p>" +
+                            "<br>" +
+                            "<br>" +
+                            "<p style=color:black;>Regards :</p>" +
+                            "<p style=color:black;>Admin</p>" +
+                            "<p style=color:black;>Football Fraternity Company Limited</p>" +
+                            "</body>" +
+                            "</html>";
         
-        if (status == 1) {
-            statusText = 'ACTIVE FAULT';
-            statusColor = '#ff0000';
-            description = faultDescriptionsActive[fault_name] || 'Active fault condition detected. Immediate attention recommended.';
-
-            if (severity.toLowerCase().includes('critical')) {
-                severityColor = '#ff0000';
-            } else if (severity.toLowerCase().includes('warning')) {
-                severityColor = '#ffa500';
-            } else {
-                severityColor = '#000000';
-            }
-        } else {
-            statusText = 'FAULT CLEARED';
-            statusColor = '#008000';
-            severityColor = '#008000'; // Green for cleared faults
-            description = faultDescriptionsCleared[fault_name] || 'Fault condition has been resolved. System operating normally.';
-        }
-
-        let htmlContent = `
-        <html>
-            <head>
-                <meta charset="UTF-8">
-                <style>
-                    body {
-                        font-family: Arial, sans-serif;
-                        line-height: 1.6;
-                        color: #333;
-                    }
-                    .header {
-                        color: #0056b3;
-                        font-size: 18px;
-                        font-weight: bold;
-                        margin-bottom: 20px;
-                    }
-                    .footer {
-                        margin-top: 30px;
-                        font-size: 14px;
-                        color: #666;
-                    }
-                    .divider {
-                        border-top: 1px solid #eaeaea;
-                        margin: 20px 0;
-                    }
-                    .details-table {
-                        width: 100%;
-                        border-collapse: collapse;
-                        margin: 15px 0;
-                    }
-                    .details-table th {
-                        text-align: left;
-                        padding: 8px;
-                        background-color: #f5f5f5;
-                        width: 30%;
-                    }
-                    .details-table td {
-                        text-align: left;
-                        padding: 8px;
-                        border-bottom: 1px solid #eaeaea;
-                    }
-                    .status-banner {
-                        padding: 10px;
-                        color: white;
-                        font-weight: bold;
-                        text-align: center;
-                        margin-bottom: 20px;
-                        border-radius: 4px;
-                    }
-                    .action-required {
-                        background-color: #fff8e1;
-                        padding: 15px;
-                        border-left: 4px solid #ffc107;
-                        margin: 20px 0;
-                        font-size: 14px;
-                    }
-                    .resolution-note {
-                        background-color: #e8f5e9;
-                        padding: 15px;
-                        border-left: 4px solid #4caf50;
-                        margin: 20px 0;
-                        font-size: 14px;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="status-banner" style="background-color: ${statusColor}">
-                    ${status == 1 ? 'FAULT ALERT: IMMEDIATE ATTENTION REQUIRED' : 'FAULT RESOLUTION NOTIFICATION'}
-                </div>
-                
-                <div class="header">Autorecloser Monitoring System - ${status == 1 ? 'Fault Notification' : 'Fault Cleared Notification'}</div>
-                <div class="divider"></div>
-                
-                <table class="details-table">
-                    <tr>
-                        <th>Fault Name:</th>
-                        <td>${fault_name.replace(/_/g, ' ')}</td>
-                    </tr>
-                    <tr>
-                        <th>Location:</th>
-                        <td>${location}</td>
-                    </tr>
-                    <tr>
-                        <th>Severity:</th>
-                        <td style="color: ${severityColor};">${severity}</td>
-                    </tr>
-                    <tr>
-                        <th>Status:</th>
-                        <td style="color: ${statusColor}; font-weight: bold;">${statusText}</td>
-                    </tr>
-                    <tr>
-                        <th>Reported At:</th>
-                        <td>${reported_at}</td>
-                    </tr>
-                    <tr>
-                        <th>Description:</th>
-                        <td>${description}</td>
-                    </tr>
-                </table>
-                
-                ${status == 1 ? `
-                <div class="action-required">
-                    <strong>ACTION REQUIRED:</strong> This ${severity.toLowerCase()} fault requires attention to prevent equipment damage or service interruption.
-                    ${severity.toLowerCase().includes('critical') ? 'IMMEDIATE RESPONSE NEEDED.' : 'Please investigate at the earliest opportunity.'}
-                </div>
-                ` : `
-                <div class="resolution-note">
-                    <strong>RESOLUTION NOTE:</strong> The fault condition has been cleared. No further action is required, but please review the event details for any necessary follow-up.
-                </div>
-                `}
-                
-                <div class="divider"></div>
-                
-                <div class="footer">
-                    <p>This is an automated notification from the Autorecloser Monitoring System.</p>
-                    <p>${status == 1 ? 'Please take appropriate action as required.' : 'This notification is for your records.'}</p>
-                    <br>
-                    <p>Best regards,</p>
-                    <p><strong>Grid Operations Team</strong></p>
-                    <p>Tanzania Electronics Labs Co, Ltd</p>
-                    <p>Email: operations@telabs.co.tz | Phone: +255 672 120 941</p>
-                </div>
-            </body>
-        </html>`;
-                 
-        // send mail with defined transport object
-        const email_subject = status == 1 
-            ? `[GRID ALERT] ${severity.toUpperCase()}: ${fault_name.replace(/_/g, ' ')} at ${location}`
-            : `[GRID RECOVERY] ${fault_name.replace(/_/g, ' ')} at ${location} - FAULT CLEARED`;
-            
-        const emails = ['giulionyakunga@gmail.com', 'julio.nyakunga@telabs.co.tz'];
-        console.log("Emails : ", emails);
+        // Send mail with defined transport object
+        const emailSubject = 'Service Request - Football Fraternity Website';
+        const emails = ['giulionyakunga@gmail.com'];
+        
+        console.log("Recipient addresses: ", emails);
         
         let mailOptions = {
-            from: 'Grid Monitoring System <giulionyakunga@gmail.com>',
+            from: '"Football Fraternity Website" <no-reply@telabs.co.tz>',
             to: emails,
-            subject: email_subject,
+            subject: emailSubject,
+            html: htmlContent,
+            attachments: (file_name !== "" || file_name1 !== "" || file_name2 !== "") ? [{
+                filename: file_name,
+                path: path,  // Provide the file path here
+                contentType: content_type,
+                cid: 'content_id' // Content ID for embedding in HTML (if needed)
+            },{
+                filename: file_name1,
+                path: path1,  // Provide the file path here
+                contentType: content_type1,
+                cid: 'content_id1' // Content ID for embedding in HTML (if needed)
+            }, {
+                filename: file_name2,
+                path: path2,  // Provide the file path here
+                contentType: content_type2,
+                cid: 'content_id2' // Content ID for embedding in HTML (if needed)
+            }
+        ] : []
+        };
+
+        // Send email
+        let info = await transporter.sendMail(mailOptions);
+        console.log('Email successfully dispatched: ' + info.response);
+        return "Your request has been successfully sent to the email address.";
+        
+    } catch (error) {
+        console.error("Error sending email:", error);
+        return "We apologize, but we encountered an issue while sending your request. Please try again later or contact our support team.";
+    }
+}
+
+async function sendMessageEmail(name, phone_number, email, message ) {
+    const nodemailer = require('nodemailer');
+    try {
+        console.log("Initiating email dispatch...");
+
+        // Create reusable transporter object using the default SMTP transport
+
+        // let transporter = nodemailer.createTransport({
+        //     host: 'smtp.gmail.com',
+        //     port: 587,
+        //     secure: false, // true for 465, false for other ports
+        //     auth: {
+        //         user: 'giulionyakunga@gmail.com',
+        //         pass: 'japttnvreysoxzvs'
+        //     }
+        // });
+
+
+        let transporter = nodemailer.createTransport({
+            host: "mail.telabs.co.tz",   // replace with your Modoboa hostname or server IP
+            port: 587,                   // 587 (STARTTLS) or 465 (SSL/TLS)
+            secure: false,               // false = STARTTLS, true = SSL/TLS
+            auth: {
+                user: "no-reply@telabs.co.tz",   // use a real mailbox created in Modoboa
+                pass: "NoReply123!"      // mailbox password
+            },
+            tls: {
+                rejectUnauthorized: false   // allow self-signed certs if using one
+            }
+        });
+
+        // Professional email content
+        let htmlContent =  "<html>" +
+                            "<head>" +
+                            "<meta charset=\"UTF-8\">" +
+                            "</head>" +
+                            "<body>" +
+                            "<br>" +
+                            "<p style=color:blue;>Please find your Client Message below </p>" +
+                            "<hr>" +
+                            "<p style=color:black;>Name : " + name + "</p>" +
+                            "<p style=color:black;>phone_number : " + phone_number + "</p>" +
+                            "<p style=color:black;>Email : " + email + "</p>" +
+                            "<p style=color:black;>Message : " + message + "</p>" +
+                            "<br>" +
+                            "<br>" +
+                            "<p style=color:black;>Regards :</p>" +
+                            "<p style=color:black;>Admin</p>" +
+                            "<p style=color:black;>Football Fraternity Company Limited</p>" +
+                            "</body>" +
+                            "</html>";
+        
+        // Send mail with defined transport object
+        const emailSubject = 'Client Message - Football Fraternity Website';
+        const emails = ['giulionyakunga@gmail.com'];
+        
+        console.log("Recipient addresses: ", emails);
+        
+        let mailOptions = {
+            from: '"Football Fraternity Website" <no-reply@telabs.co.tz>',
+            to: emails,
+            subject: emailSubject,
             html: htmlContent,
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                resolve("Message Not Sent! An Error Occured : Errono = "+ error.errno + " code = " + error.code);
-                console.log(error);
-            } else {
-                resolve("Your message was Sent successfully!");
-                console.log('Email sent: ' + info.response);
-            }
-        });
-    });
+        // Send email
+        let info = await transporter.sendMail(mailOptions);
+        console.log('Email successfully dispatched: ' + info.response);
+        return "Your request has been successfully sent to the email address.";
+        
+    } catch (error) {
+        console.error("Error sending email:", error);
+        return "We apologize, but we encountered an issue while sending your request. Please try again later or contact our support team.";
+    }
 }

@@ -10,11 +10,7 @@ module.exports = {
                 autoIncrement: true,
                 primaryKey: true
             },
-            user_id: {
-                type: Sequelize.INTEGER(11),
-                allowNull: false,
-            },
-            name: {
+            client_name: {
                 type: Sequelize.STRING(100), 
                 allowNull: false,
             },
