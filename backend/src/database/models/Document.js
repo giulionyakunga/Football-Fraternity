@@ -2,44 +2,28 @@ const Sequelize = require('sequelize');
 const { DataTypes } = require('sequelize');
 const sequelize = require('../connection');
 
-module.exports = sequelize.define("request", {
+module.exports = sequelize.define("document", {
     id: {
         type: Sequelize.INTEGER(11),
         allowNull: false,
         autoIncrement: true,
         primaryKey: true
     },
-    client_name: {
-        type: Sequelize.STRING(100), 
+    user_id: {
+        type: Sequelize.INTEGER(11),
         allowNull: false,
-        unique: false
     },
-    phone_number: {
-        type: Sequelize.STRING(100), 
-        allowNull: false,
-        unique: false
-    },
-    email: {
-        type: Sequelize.STRING(100), 
-        allowNull: false,
-        unique: false
-    },
-    service_type: {
-        type: Sequelize.STRING(100), 
-        allowNull: false,
-        unique: false
-    },
-    type: {
-        type: Sequelize.STRING(100), 
-        allowNull: false,
-        unique: false
-    },
-    subject: {
+    title: {
         type: Sequelize.STRING(100), 
         allowNull: false,
         unique: false
     },
     description: {
+        type: Sequelize.STRING(500), 
+        allowNull: false,
+        unique: false
+    },
+    document_type: {
         type: Sequelize.STRING(100), 
         allowNull: false,
         unique: false
@@ -49,14 +33,18 @@ module.exports = sequelize.define("request", {
         allowNull: true,
         unique: false
     },
-    file_url1: {
+    file_name: {
         type: Sequelize.STRING(100), 
-        allowNull: true,
+        allowNull: false,
         unique: false
     },
-    file_url2: {
+    file_type: {
         type: Sequelize.STRING(100), 
-        allowNull: true,
+        allowNull: false,
         unique: false
+    },
+    size: {
+        type: Sequelize.STRING(10), 
+        allowNull: false,
     },
 });

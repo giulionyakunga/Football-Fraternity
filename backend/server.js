@@ -9,19 +9,22 @@ const ping = require('ping');
 const path = require('path')
 
 
-
 const server = express();
 server.use(cors());
-server.use(bodyParser.urlencoded({ extended: true }));
-server.use(bodyParser.json());
+// Increase payload limit for JSON (default is 100kb)
+server.use(express.json({ limit: '50mb' }));
+// Increase payload limit for URL-encoded data (default is 100kb)
+server.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
 
 const User = require('./src/database/models/User');
 const Footballer = require('./src/database/models/Footballer');
 const Message = require('./src/database/models/Message');
 const Request = require('./src/database/models/Request');
+const Document = require('./src/database/models/Document');
 
 
-server.post('/api2/add_user', async (req, res) => {
+server.post('/add_user', async (req, res) => {
     console.log("User: ", req.body)
 
     const first_name = req.body.first_name;
@@ -66,12 +69,11 @@ server.post('/api2/add_user', async (req, res) => {
                 res.send("User not created!");
             }
         })
-
     }
 
 });
 
-server.post('/api2/update_user', async (req, res) => {
+server.post('/update_user', async (req, res) => {
     console.log("User: ", req.body)
 
     const user_id = req.body.user_id;
@@ -123,6 +125,183 @@ server.post('/api2/update_user', async (req, res) => {
         })
     }
 
+});
+
+async function checkDuplicateFields2(data) {
+    const { email } = data;
+    const { phone_number } = data;
+    
+
+    let duplicateFields = [];
+
+    try {
+        // Check if email exists
+        const emailExists = await User.findOne({ where: { email } })
+        .catch(err => {
+            console.error("User not found, Error : ", err);
+        });
+
+        if (emailExists) {
+            duplicateFields.push(email);
+        }
+
+        // Check if email exists
+        const phoneNumberExists = await User.findOne({ where: { phone_number } })
+        .catch(err => {
+            console.error("User not found, Error : ", err);
+        });
+
+        if (phoneNumberExists) {
+            duplicateFields.push(phone_number);
+        }
+
+        // If no duplicates, return null
+        if (duplicateFields.length === 0) {
+            return null; // No duplicates found, safe to insert
+        }
+
+        if(emailExists && phoneNumberExists){
+            return `User with this email and phone number already exist: ${duplicateFields.join(', ')}`;
+        }if(emailExists){
+            return `User with this email already exist: ${duplicateFields.join(', ')}`;
+        }if(phoneNumberExists){
+            return `User with this phone number already exist: ${duplicateFields.join(', ')}`;
+        }
+
+
+    } catch (error) {
+        console.error('Error checking for duplicate fields:', error);
+        return 'An error occurred while checking for duplicates.';
+    }
+}
+
+server.get('/create_admin_user', async function (request, response) {
+    const email = 'julio.nyakunga@telabs.co.tz';
+    const phone_number = '+255672120941';
+    const data = {
+        email,
+        phone_number
+    }
+
+    const duplicateCheck = await checkDuplicateFields2(data);
+    if (duplicateCheck) {
+        console.log(duplicateCheck); // Log the custom error message
+        response.send(duplicateCheck);
+    } else {
+        User.create({
+            first_name: 'Julio',
+            middle_name: 'C',
+            last_name: 'Nyakunga',
+            email,
+            phone_number,
+            role: 'admin',
+            password: 'julio123',
+            region: 'Dar es Salaam',
+            district: 'Kinondoni',
+            ward: 'Kijitonyama',
+            street: 'Uganda',
+            selected_card_type: "",
+            card_number: "",
+        }).catch(err => {
+            console.log("User not created, Error : ", err);
+        }).then((user) => {
+            console.log("user : ", user);
+            if(user) {
+                response.send("Admin User created successfully!");
+            }else {
+                response.send("Request failed, Admin User not created!");
+            }
+        })
+    }
+});
+
+server.get('/create_admin_user2', async function (request, response) {
+    const email = '1yazidalpha@gmail.com';
+    const phone_number = '+255769770772';
+    const data = {
+        email,
+        phone_number
+    }
+
+    const duplicateCheck = await checkDuplicateFields2(data);
+    if (duplicateCheck) {
+        console.log(duplicateCheck); // Log the custom error message
+        response.send(duplicateCheck);
+    } else {
+        User.create({
+            first_name: 'Rashid',
+            middle_name: '',
+            last_name: 'Yazid',
+            email,
+            phone_number,
+            role: 'admin',
+            password: 'rashid123',
+            region: 'Dar es Salaam',
+            district: 'Kinondoni',
+            ward: 'Kijitonyama',
+            street: 'Uganda',
+            selected_card_type: "",
+            card_number: "",
+        }).catch(err => {
+            console.log("User not created, Error : ", err);
+        }).then((user) => {
+            console.log("user : ", user);
+            if(user) {
+                response.send("Admin User created successfully!");
+            }else {
+                response.send("Request failed, Admin User not created!");
+            }
+        })
+    }
+});
+
+server.post('/login', async (req, res) => {
+    const jwt = require('jsonwebtoken');
+    const email = req.body.email;
+    const password = req.body.password;
+    console.log("Body: ", req.body)
+    console.log("Email: ", email)
+    console.log("password: ", password)
+
+    await User.findOne({
+        where: {
+            email: email,
+            password: password
+        }
+    })
+    .catch(err => {
+        console.log("User not found, Error : ", err);
+    })
+    .then(async user => {
+        if (user) {
+            // res.json(user);
+
+            // secret key
+            const secretKey = 'gridi-kiganjani-secret-key';
+
+            // Payload is the information to be include in the token 
+            const payload = {
+                id: user.id,
+                email: user.email,
+                role: user.role,
+            }
+
+            // Options (optional)
+            const options = {
+                expiresIn: '1h', // Token expiration time
+            };
+
+            // Generate the JWT token
+            const token = jwt.sign(payload, secretKey, options);
+
+            // Send the token to the client
+            res.json({...user.dataValues, token: token });
+            console.log("token : ", token);
+
+        } else {
+            res.send("Login failed, Plz check your credentials!");
+        }
+    })
 });
 
 async function checkDuplicateFields(data) {
@@ -507,6 +686,134 @@ server.get('/messages/', async function (request, response) {
     }
 });
 
+async function checkDuplicateFields3(data) {
+    const { title } = data;
+    const { document_type } = data;
+    
+
+    let duplicateFields = [];
+
+    try {
+        // Check if email exists
+        const documentExists = await Document.findOne({ where: { title, document_type } })
+        .catch(err => {
+            console.error("Document not found, Error : ", err);
+        });
+
+        if (documentExists) {
+            duplicateFields.push(title);
+            duplicateFields.push(document_type);
+        }
+
+        // If no duplicates, return null
+        if (duplicateFields.length === 0) {
+            return null; // No duplicates found, safe to insert
+        }
+
+        if(documentExists){
+            return `Document with this title and type already exist: ${duplicateFields.join(', ')}`;
+        }
+
+    } catch (error) {
+        console.error('Error checking for duplicate fields:', error);
+        return 'An error occurred while checking for duplicates.';
+    }
+}
+
+server.post('/upload_document', async (req, res) => {
+    console.log("Document: ", req.body);
+   
+    const { user_id, title, description, document_type, file_type, file_name, file } = req.body;
+
+    const duplicateCheck = await checkDuplicateFields3(req.body);
+    if (duplicateCheck) {
+        console.log(duplicateCheck); // Log the custom error message
+        res.send(duplicateCheck);
+    } else {
+        
+        if (!file) {
+            console.log('No Document received.');
+            return res.status(400).send("Document file is required.");
+        }
+
+        const file_buffer = Buffer.from(file, 'base64');
+        const file_size_in_bytes = file_buffer.length;
+        const file_size_in_mb = file_size_in_bytes / (1024 * 1024);
+        console.log(`File size: ${file_size_in_mb.toFixed(2)} MB`);
+    
+        let file_url;
+        let file_type;
+        if(file_name) {
+            const file_extension = file_name.split('.')[1];
+            file_type = file_extension;
+            file_url = `document-${user_id}-${Date.now()}.${file_extension}`;
+        }
+
+        const document = await Document.create({
+            user_id,
+            title,
+            description,
+            document_type,
+            file_url,
+            file_name,
+            file_type,
+            size: `${file_size_in_mb.toFixed(2)} MB`
+        })
+        .catch(async err => {
+            console.log("Document not created, Error : ", err);
+        })
+
+        if(document) {
+            if (file || file1 || file2) {
+                // Save file1
+                const uploadDir = path.join(__dirname, 'uploads/documents');
+                if (!fs.existsSync(uploadDir)) {
+                    fs.mkdirSync(uploadDir);
+                }
+                
+                let filePath;
+                if(file_url && file) {
+                    const fileBuffer = Buffer.from(file, 'base64');
+                    filePath = path.join(uploadDir, file_url);
+                    fs.writeFileSync(filePath, fileBuffer);
+                }
+
+                res.send("Document uploaded successfully!");
+            }
+        } else {
+            res.send('Document not uploaded!')
+        }
+    }
+});
+
+server.get('/documents/', async function (request, response) {
+    try {
+        const documents = await Document.findAll();
+        if(documents){
+            response.json(documents);
+        }
+    } catch (err) {
+        console.error("Document fetch error:", err);
+        response.status(500).json({ error: "Failed to fetch Document" });
+    }
+});
+
+// Route to get an document by name
+server.get('/document/:document_name', (req, res) => {
+    const document_name = req.params.document_name;
+    const document_path = path.join(__dirname, '/uploads/documents/', document_name);
+
+    console.log(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Getting document, document_name : ", document_name, ", document_path : ", document_path);
+
+    // Check if the document exists and send it
+    res.sendFile(document_path, (err) => {
+        if (err) {
+            console.log("An Error Occured: ", err)
+            // res.status(404).json({ error: 'Document not found' });
+        }
+    });
+});
+
 const port = 8087;
 server.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
@@ -561,7 +868,7 @@ async function sendRequestEmail(name, phone_number, email, service_type, request
                             "</head>" +
                             "<body>" +
                             "<br>" +
-                            "<p style=color:blue;>Please find your Client request below </p>" +
+                            "<p style=color:blue;>Please find Your Client's Request below </p>" +
                             "<hr>" +
                             "<p style=color:black;>Name : " + name + "</p>" +
                             "<p style=color:black;>phone_number : " + phone_number + "</p>" +
@@ -657,7 +964,7 @@ async function sendMessageEmail(name, phone_number, email, message ) {
                             "</head>" +
                             "<body>" +
                             "<br>" +
-                            "<p style=color:blue;>Please find your Client Message below </p>" +
+                            "<p style=color:blue;>Please find Your Client's Message below </p>" +
                             "<hr>" +
                             "<p style=color:black;>Name : " + name + "</p>" +
                             "<p style=color:black;>phone_number : " + phone_number + "</p>" +
